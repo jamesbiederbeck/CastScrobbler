@@ -1,0 +1,39 @@
+services:
+  chromecast-scraper:
+    build: .
+    container_name: chromecast-scraper
+    restart: unless-stopped
+
+    # Host networking required for mDNS discovery (multicast UDP 224.0.0.251:5353).
+    # If Chromecasts are on a separate VLAN, you need an mDNS repeater (avahi
+    # with allow-interfaces spanning VLANs) OR switch to static-IP polling:
+    #   pychromecast.get_listed_chromecasts(hosts=["x.x.x.x", ...])
+    network_mode: host
+
+    volumes:
+      - ./data:/data
+
+    environment:
+      DB_PATH: /data/chromecast.db
+
+      # How often to poll (seconds)
+      POLL_INTERVAL: "300"
+
+      # mDNS discovery window (seconds)
+      DISCOVERY_TIMEOUT: "15"
+
+      # Re-run mDNS discovery every N poll cycles (default 12 = ~1h at 5min interval)
+      DISCOVER_EVERY_N_POLLS: "12"
+
+      # Write a row even when device is idle / state unknown
+      SAVE_IDLE: "true"
+      SAVE_UNKNOWN: "true"
+
+      # Only insert when content fingerprint changes (dedup; still logs all on first run)
+      ONLY_ON_CHANGE: "false"
+
+      # Optional: comma-separated UUIDs to restrict polling to specific devices
+      # DEVICE_UUID_ALLOWLIST: "uuid1,uuid2"
+
+      # Optional: Python regex matched against device friendly name
+      # DEVICE_NAME_REGEX: "Living Room|Bedroom"
