@@ -1,0 +1,29 @@
+name: "CastScrobbler"
+version: "1.0.0"
+slug: castscrobbler
+description: "A Chromecast Telemetry Scraper. Polls Chromecasts and logs now-playing metadata to SQLite."
+arch:
+  - amd64
+  - aarch64
+  - armv7
+host_network: true
+options:
+  poll_interval: 300
+  discovery_timeout: 15
+  discover_every_n_polls: 12
+  save_idle: true
+  save_unknown: true
+  only_on_change: false
+  device_uuid_allowlist: ""
+  device_name_regex: ""
+  log_level: "info"
+schema:
+  poll_interval: "int(10,)"
+  discovery_timeout: "int(5,60)"
+  discover_every_n_polls: "int(1,)"
+  save_idle: bool
+  save_unknown: bool
+  only_on_change: bool
+  device_uuid_allowlist: str
+  device_name_regex: str
+  log_level: "list(debug|info|warning|error)"

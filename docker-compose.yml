@@ -1,7 +1,7 @@
 services:
-  chromecast-scraper:
+  castscrobbler:
     build: .
-    container_name: chromecast-scraper
+    container_name: castscrobbler
     restart: unless-stopped
 
     # Host networking required for mDNS discovery (multicast UDP 224.0.0.251:5353).
