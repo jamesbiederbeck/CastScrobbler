@@ -1,0 +1,33 @@
+configuration:
+  poll_interval:
+    name: Poll interval
+    description: Seconds between polling cycles (minimum 10).
+  discovery_timeout:
+    name: Discovery timeout
+    description: Seconds to wait for mDNS discovery per cycle (5–60).
+  discover_every_n_polls:
+    name: Discover every N polls
+    description: Re-run mDNS discovery every N poll cycles (default 12 ≈ 1 h at 5 min interval).
+  save_idle:
+    name: Save idle state
+    description: Write a row even when the device reports IDLE.
+  save_unknown:
+    name: Save unknown state
+    description: Write a row even when the device state is UNKNOWN.
+  only_on_change:
+    name: Only record on change
+    description: >
+      When enabled, skips writing a row if the content fingerprint matches
+      the previous snapshot for that device. Reduces row count but loses
+      time-series granularity.
+  device_uuid_allowlist:
+    name: Device UUID allowlist
+    description: >
+      Comma-separated list of Chromecast UUIDs to poll. Leave blank to poll
+      all discovered devices.
+  device_name_regex:
+    name: Device name regex
+    description: Python regex matched against device friendly name. Leave blank for all.
+  log_level:
+    name: Log level
+    description: Verbosity of container logs. Use 'debug' when diagnosing discovery issues.
