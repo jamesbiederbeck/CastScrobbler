@@ -10,5 +10,6 @@ export ONLY_ON_CHANGE="$(bashio::config 'only_on_change')"
 export DEVICE_UUID_ALLOWLIST="$(bashio::config 'device_uuid_allowlist')"
 export DEVICE_NAME_REGEX="$(bashio::config 'device_name_regex')"
 export LOG_LEVEL="$(bashio::config 'log_level' | tr '[:lower:]' '[:upper:]')"
+export PUBLISH_HA_STATES="$(bashio::config 'publish_ha_states')"
 
 exec python3 -u /app/scraper.py
