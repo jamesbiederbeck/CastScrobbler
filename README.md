@@ -30,6 +30,7 @@ All options are env vars, set in `docker-compose.yml` or passed via `-e`.
 | `DEVICE_UUID_ALLOWLIST` | *(all)*               | Comma-separated UUIDs; if set, only these devices are polled                |
 | `DEVICE_NAME_REGEX`     | *(all)*               | Python regex matched against device friendly name                           |
 | `LOG_LEVEL`             | `INFO`                | Python log level (`DEBUG`, `INFO`, `WARNING`, `ERROR`)                      |
+| `PUBLISH_HA_STATES`     | `true`                | Publish each Chromecast as a `media_player` entity in Home Assistant (add-on mode only; requires `SUPERVISOR_TOKEN`) |
 
 ### `ONLY_ON_CHANGE` tradeoff
 
@@ -42,6 +43,32 @@ last matching row and the next different one.
 
 The fingerprint covers: `app_id`, `state`, `title`, `series`, `season`,
 `episode`, `content_id`, `content_type`, `artist`, `album`.
+
+---
+
+### Home Assistant device states
+
+When running as a Home Assistant add-on, CastScrobbler automatically publishes
+each discovered Chromecast as a `media_player` entity (e.g.
+`media_player.castscrobbler_living_room_tv`) after every poll cycle. The entity
+state mirrors the Chromecast playback state:
+
+| Chromecast state | HA entity state |
+|------------------|-----------------|
+| `PLAYING`        | `playing`       |
+| `PAUSED`         | `paused`        |
+| `BUFFERING`      | `buffering`     |
+| `IDLE`           | `idle`          |
+| other / unknown  | `standby`       |
+| connection timeout | `unavailable` |
+
+Entity attributes include `media_title`, `media_artist`, `media_album_name`,
+`app_name`, `volume_level`, `is_volume_muted`, `media_duration`,
+`media_position`, and more — enough to drive automations and dashboards.
+
+This feature requires the `SUPERVISOR_TOKEN` environment variable, which is
+injected automatically in add-on mode. Set `PUBLISH_HA_STATES=false` to disable
+it if you only need the SQLite database.
 
 ---
 

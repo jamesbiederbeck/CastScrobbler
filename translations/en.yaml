@@ -31,3 +31,9 @@ configuration:
   log_level:
     name: Log level
     description: Verbosity of container logs. Use 'debug' when diagnosing discovery issues.
+  publish_ha_states:
+    name: Publish states to Home Assistant
+    description: >
+      When enabled, each discovered Chromecast is exposed as a media_player entity
+      in Home Assistant and updated every poll cycle with the current playback state.
+      Requires the add-on to be running inside Home Assistant (uses the Supervisor API token).
