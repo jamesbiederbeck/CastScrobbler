@@ -21,7 +21,10 @@ import time
 from datetime import datetime, timezone
 from typing import Optional
 
+import zeroconf as zeroconf_module
+
 import pychromecast
+from pychromecast import CastBrowser, SimpleCastListener, get_chromecast_from_cast_info
 
 # ---------------------------------------------------------------------------
 # Config
@@ -228,15 +231,22 @@ class DiscoveryManager:
     def discover(self):
         self._stop()
         log.info("Running mDNS discovery (timeout=%ds)…", DISCOVERY_TIMEOUT)
-        self.chromecasts, self.browser = pychromecast.get_chromecasts(timeout=DISCOVERY_TIMEOUT)
-        allowed = [c for c in self.chromecasts if device_allowed(c)]
-        log.info("Discovered %d device(s), %d after filtering", len(self.chromecasts), len(allowed))
+        zconf = zeroconf_module.Zeroconf()
+        self.browser = CastBrowser(SimpleCastListener(), zconf)
+        self.browser.start_discovery()
+        time.sleep(DISCOVERY_TIMEOUT)
+        chromecasts = [
+            get_chromecast_from_cast_info(info, zconf)
+            for info in self.browser.devices.values()
+        ]
+        allowed = [c for c in chromecasts if device_allowed(c)]
+        log.info("Discovered %d device(s), %d after filtering", len(chromecasts), len(allowed))
         self.chromecasts = allowed
 
     def _stop(self):
         if self.browser:
             try:
-                pychromecast.stop_discovery(self.browser)
+                self.browser.stop_discovery()
             except Exception:
                 pass
             self.browser = None
@@ -260,6 +270,8 @@ def poll_cycle(conn: sqlite3.Connection, discovery: DiscoveryManager):
     for cast in discovery.chromecasts:
         try:
             rec = snapshot_cast(cast)
+            if rec is None:
+                continue
 
             state = rec.get("state")
             if not SAVE_IDLE and state == "IDLE":
