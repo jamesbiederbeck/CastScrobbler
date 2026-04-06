@@ -173,7 +173,7 @@ def make_fingerprint(rec: dict) -> str:
 
 def snapshot_cast(cast) -> Optional[dict]:
     # wait() returns False on timeout (does NOT raise) — treat as unreachable
-    if not cast.wait(timeout=5):
+    if not cast.wait(timeout=10):
         log.warning("Timed out connecting to %s, skipping", cast.name)
         return None
 
