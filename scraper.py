@@ -14,10 +14,13 @@ import hashlib
 import json
 import logging
 import os
+import re
 import signal
 import sqlite3
 import sys
 import time
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -40,6 +43,8 @@ ONLY_ON_CHANGE        = os.environ.get("ONLY_ON_CHANGE", "false").lower() == "tr
 DEVICE_UUID_ALLOWLIST = set(filter(None, os.environ.get("DEVICE_UUID_ALLOWLIST", "").split(",")))
 DEVICE_NAME_REGEX     = os.environ.get("DEVICE_NAME_REGEX", "")
 LOG_LEVEL             = os.environ.get("LOG_LEVEL", "INFO").upper()
+SUPERVISOR_TOKEN      = os.environ.get("SUPERVISOR_TOKEN", "")
+PUBLISH_HA_STATES     = os.environ.get("PUBLISH_HA_STATES", "true").lower() == "true"
 
 logging.basicConfig(
     level=getattr(logging, LOG_LEVEL, logging.INFO),
@@ -142,7 +147,6 @@ def last_fingerprint(conn: sqlite3.Connection, device_uuid: Optional[str]) -> Op
 def _compile_name_regex():
     if not DEVICE_NAME_REGEX:
         return None
-    import re
     return re.compile(DEVICE_NAME_REGEX)
 
 _name_re = _compile_name_regex()
@@ -220,6 +224,112 @@ def snapshot_cast(cast) -> Optional[dict]:
 
 
 # ---------------------------------------------------------------------------
+# Home Assistant state publisher
+# ---------------------------------------------------------------------------
+
+_HA_STATE_MAP = {
+    "PLAYING":   "playing",
+    "PAUSED":    "paused",
+    "BUFFERING": "buffering",
+    "IDLE":      "idle",
+}
+
+
+def _entity_id(device_name: str) -> str:
+    """Return a stable HA entity ID for a Chromecast device name."""
+    slug = re.sub(r"[^a-z0-9]+", "_", device_name.lower()).strip("_")
+    return f"media_player.castscrobbler_{slug}"
+
+
+def _ha_post(entity_id: str, payload: dict, label: str):
+    """POST a state payload to the Home Assistant REST API."""
+    url = f"http://supervisor/core/api/states/{entity_id}"
+    data = json.dumps(payload).encode()
+    headers = {
+        "Authorization": f"Bearer {SUPERVISOR_TOKEN}",
+        "Content-Type": "application/json",
+    }
+    req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            log.debug(
+                "HA state published for %s → %s (HTTP %d)",
+                label, entity_id, resp.status,
+            )
+    except urllib.error.HTTPError as e:
+        log.warning("Failed to publish HA state for %s: HTTP %d", label, e.code)
+    except Exception as e:
+        log.error("Error publishing HA state for %s: %s", label, e)
+
+
+def publish_to_ha(rec: dict):
+    """Publish a snapshot record as a media_player entity state in Home Assistant."""
+    if not SUPERVISOR_TOKEN or not PUBLISH_HA_STATES:
+        return
+
+    ha_state = _HA_STATE_MAP.get(rec.get("state"), "standby")
+
+    volume_muted_raw = rec.get("volume_muted")
+    attrs = {
+        "friendly_name":      rec["device_name"],
+        "source":             "CastScrobbler",
+        "device_uuid":        rec.get("device_uuid"),
+        "app_id":             rec.get("app_id"),
+        "app_name":           rec.get("app_name"),
+        "media_content_id":   rec.get("content_id"),
+        "media_content_type": rec.get("content_type"),
+        "media_title":        rec.get("title"),
+        "media_series_title": rec.get("series"),
+        "media_season":       rec.get("season"),
+        "media_episode":      rec.get("episode"),
+        "media_artist":       rec.get("artist"),
+        "media_album_name":   rec.get("album"),
+        "media_duration":     rec.get("duration_s"),
+        "media_position":     rec.get("current_s"),
+        "playback_rate":      rec.get("playback_rate"),
+        "volume_level":       rec.get("volume_level"),
+        "is_volume_muted":    bool(volume_muted_raw) if volume_muted_raw is not None else None,
+        "is_active_input":    rec.get("is_active_input"),
+        "media_session_id":   rec.get("media_session_id"),
+        "idle_reason":        rec.get("idle_reason"),
+        "stream_type":        rec.get("stream_type"),
+    }
+
+    if rec.get("images_json"):
+        try:
+            images = json.loads(rec["images_json"])
+            if images:
+                attrs["entity_picture"] = images[0]
+        except Exception:
+            pass
+
+    # Keep False/0 values; only drop None
+    payload_attrs = {k: v for k, v in attrs.items() if v is not None}
+
+    _ha_post(
+        _entity_id(rec["device_name"]),
+        {"state": ha_state, "attributes": payload_attrs},
+        rec["device_name"],
+    )
+
+
+def mark_unavailable_in_ha(cast):
+    """Mark a Chromecast as unavailable in Home Assistant (e.g. on connection timeout)."""
+    if not SUPERVISOR_TOKEN or not PUBLISH_HA_STATES:
+        return
+
+    attrs = {"friendly_name": cast.name, "source": "CastScrobbler"}
+    if cast.uuid:
+        attrs["device_uuid"] = str(cast.uuid)
+
+    _ha_post(
+        _entity_id(cast.name),
+        {"state": "unavailable", "attributes": attrs},
+        cast.name,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Discovery manager
 # ---------------------------------------------------------------------------
 
@@ -272,6 +382,12 @@ def poll_cycle(conn: sqlite3.Connection, discovery: DiscoveryManager):
             rec = snapshot_cast(cast)
             if rec is None:
                 continue
+
+            if rec is None:
+                mark_unavailable_in_ha(cast)
+                continue
+
+            publish_to_ha(rec)  # always push to HA, before any DB-level filters
 
             state = rec.get("state")
             if not SAVE_IDLE and state == "IDLE":
@@ -330,8 +446,8 @@ signal.signal(signal.SIGINT, _handle_signal)
 
 def main():
     log.info(
-        "Starting. DB=%s  interval=%ds  only_on_change=%s  save_idle=%s  save_unknown=%s",
-        DB_PATH, POLL_INTERVAL, ONLY_ON_CHANGE, SAVE_IDLE, SAVE_UNKNOWN,
+        "Starting. DB=%s  interval=%ds  only_on_change=%s  save_idle=%s  save_unknown=%s  publish_ha_states=%s",
+        DB_PATH, POLL_INTERVAL, ONLY_ON_CHANGE, SAVE_IDLE, SAVE_UNKNOWN, PUBLISH_HA_STATES,
     )
     conn = init_db(DB_PATH)
     discovery = DiscoveryManager()

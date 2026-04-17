@@ -17,6 +17,7 @@ options:
   device_uuid_allowlist: ""
   device_name_regex: ""
   log_level: "info"
+  publish_ha_states: true
 schema:
   poll_interval: "int(10,)"
   discovery_timeout: "int(5,60)"
@@ -27,3 +28,4 @@ schema:
   device_uuid_allowlist: str
   device_name_regex: str
   log_level: "list(debug|info|warning|error)"
+  publish_ha_states: bool
